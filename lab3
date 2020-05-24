@@ -1,0 +1,955 @@
+/* ------------------------------------------------------- */
+%
+%    D7012E Declarative languages
+%    Luleå University of Technology
+%
+%    Student full name: <TO BE FILLED IN BEFORE THE GRADING>
+%    Student user id  : <TO BE FILLED IN BEFORE THE GRADING>
+%
+/* ------------------------------------------------------- */
+
+
+
+%do not chagne the follwoing line!
+:- ensure_loaded('play.pl').
+
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+% /* ------------------------------------------------------ */
+%               IMPORTANT! PLEASE READ THIS SUMMARY:
+%       This files gives you some useful helpers (set &get).
+%       Your job is to implement several predicates using
+%       these helpers. Feel free to add your own helpers if
+%       needed, as long as you write comments (documentation)
+%       for all of them.
+%
+%       Implement the following predicates at their designated
+%       space in this file. You might like to have a look at
+%       the file  ttt.pl  to see how the implementations is
+%       done for game tic-tac-toe.
+%
+%          * initialize(InitialState,InitialPlyr).
+%          * winner(State,Plyr)
+%          * tie(State)
+%          * terminal(State)
+%          * moves(Plyr,State,MvList)
+%          * nextState(Plyr,Move,State,NewState,NextPlyr)
+%          * validmove(Plyr,State,Proposed)
+%          * h(State,Val)  (see question 2 in the handout)
+%          * lowerBound(B)
+%          * upperBound(B)
+% /* ------------------------------------------------------ */
+
+
+
+
+
+
+
+% /* ------------------------------------------------------ */
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+% We use the following State Representation:
+% [Row0, Row1 ... Rown] (ours is 6x6 so n = 5 ).
+% each Rowi is a LIST of 6 elements '.' or '1' or '2' as follows:
+%    . means the position is  empty
+%    1 means player one has a stone in this position
+%    2 means player two has a stone in this position.
+
+
+
+
+
+% DO NOT CHANGE THE COMMENT BELOW.
+%
+% given helper: Inital state of the board
+
+initBoard([ [.,.,.,.,.,.],
+            [.,.,.,.,.,.],
+	    [.,.,1,2,.,.],
+	    [.,.,2,1,.,.],
+            [.,.,.,.,.,.],
+	    [.,.,.,.,.,.] ]).
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%% IMPLEMENT: initialize(...)%%%%%%%%%%%%%%%%%%%%%
+%%% Using initBoard define initialize(InitialState,InitialPlyr).
+%%%  holds iff InitialState is the initial state and
+%%%  InitialPlyr is the player who moves first.
+initialize(InitialState,1) :-
+	initBoard(InitialState).
+
+
+
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%winner(...)%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% define winner(State,Plyr) here.
+%     - returns winning player if State is a terminal position and
+%     Plyr has a higher score than the other player
+winner(State, Plyr) :-
+    terminal(State),
+	get_score(State, 1, Score1),
+	get_score(State, 2, Score2),
+	(   Plyr = 1,
+	    Score1 > Score2;
+
+	    Plyr = 2,
+	    Score2 > Score1
+	), !.
+
+%determine index of specific type( . 1 2 )
+liness([], _, _, _, []) :- !.
+liness([X|T], Plyr, I, J, [[I,J] | N]) :- Plyr = X, A is I+1, liness(T, Plyr, A, J, N). %N is I+1.%  I is I1+1, Plyr = X.
+liness([X|T], Plyr, I, J, N) :- X \= Plyr, A is I+1, liness(T, Plyr, A, J, N).
+
+%split the list and makes sublists of tail.
+split([H|_], Plyr, I, J, S) :-
+    liness(H, Plyr, I, J, S).
+split([_|T],Plyr, I, J, S) :-
+    B is I,
+    C is J+1,
+    split(T, Plyr, B, C, S).
+
+%put all list in lists to a list
+final_coords(List, Plyr, Res) :-
+   findall(X, split(List,Plyr, 0, 0, X), Res).
+
+%return list in a list with all positions for Player
+flat(List,Plyr, Res3) :-
+   final_coords(List, Plyr, Res),
+   flatten(Res, Res2),
+   phrase(singletons(Res2), Res3).
+
+member(X, [Y|_], Y) :- X = Y.
+member(X, [_|T], Y) :- member(X, T, Y).
+
+append_list([],L, L).
+append_list([Head|Tail], List2, [Head|List]):-
+     append_list(Tail, List2, List).
+
+fst([X|_], X).
+snd([_|T], T1) :- head(T, T1).
+
+head([H|_], H).
+
+insert(X,[],[X]) :- !.
+insert(X,[H|T],[X,H|T]):-
+     (fst(H, SumOfH),
+     fst(X, SumOfX),
+	 snd(H, SumOfHY),
+	 snd(X, SumOfXY),
+     (   SumOfX = SumOfH), (SumOfXY < SumOfHY),!);
+	(fst(H, SumOfH),
+     fst(X, SumOfX),
+     (   SumOfX < SumOfH)),!.
+insert(X,[H|T1],[H|T2]):- insert(X,T1,T2).
+
+insort([],[]) :- !.
+insort([H|T],Sorted):-
+   insort(T,Sorted2),
+   insert(H,Sorted2,Sorted).
+
+get_opponent(Plyr, Opponent) :-
+   (Plyr = 1, Opponent is 2),!;
+   (Plyr = 2, Opponent is 1),!.
+
+%check how many opponents between the move, should take the index after PLayer index. for example 1 2 2 2 . So the first 2
+%test_count_equal, checks how many stones are between Players stones for example, 1 - 2 - 2 - 2 - 1, will keep going from 1 to 1 and return the final coordinates.
+test_count_equal(List, Plyr, Opp, Direction, H, Coords) :-
+   (Direction = up,
+   (get(List,H,Dot),
+   add_up(H, NewH), 
+   Dot = Opp,
+   test_count_equal(List, Plyr,Opp,  up, NewH, Coords)),!;
+   (get(List, H, Dot)),
+   Dot = .,
+   getCoords(H, Coords),!),!;
+   
+   (Direction = down,
+   (get(List,H,Dot),
+   add_down(H, NewH), 
+   Dot = Opp,
+   test_count_equal(List, Plyr,Opp,  down, NewH, Coords)),!;
+   (get(List, H, Dot)),
+   Dot = .,
+   getCoords(H, Coords),!),!;
+   
+   (Direction = right,
+   (get(List,H,Dot),
+   add_right(H, NewH), 
+   Dot = Opp,
+   test_count_equal(List, Plyr,Opp,  right, NewH, Coords)),!;
+   (get(List, H, Dot)),
+   Dot = .,
+   getCoords(H, Coords),!),!;
+   
+   (Direction = left,
+   (get(List,H,Dot),
+   add_left(H, NewH), 
+   Dot = Opp,
+   test_count_equal(List, Plyr,Opp,  left, NewH, Coords)),!;
+   (get(List, H, Dot)),
+   Dot = .,
+   getCoords(H, Coords),!),!;
+   
+   (Direction = upleft,
+   (get(List,H,Dot),
+   add_upleft(H, NewH), 
+   Dot = Opp,
+   test_count_equal(List, Plyr,Opp,  upleft, NewH, Coords)),!;
+   (get(List, H, Dot)),
+   Dot = .,
+   getCoords(H, Coords),!),!;
+   
+   (Direction = downleft,
+   (get(List,H,Dot),
+   add_downleft(H, NewH), 
+   Dot = Opp,
+   test_count_equal(List, Plyr, Opp, downleft, NewH, Coords)),!;
+   (get(List, H, Dot)),
+   Dot = .,
+   getCoords(H, Coords),!),!;
+   
+   (Direction = upright,
+   (get(List,H,Dot),
+   add_upright(H, NewH), 
+   Dot = Opp,
+   test_count_equal(List, Plyr,Opp,  upright, NewH, Coords)),!;
+   (get(List, H, Dot)),
+   Dot = .,
+   getCoords(H, Coords),!),!;
+   
+   (Direction = downright,
+   (get(List,H,Dot),
+   add_downright(H, NewH), 
+   Dot = Opp,
+   test_count_equal(List, Plyr, Opp, downright, NewH, Coords)),!;
+   (get(List, H, Dot)),
+   Dot = .,
+   getCoords(H, Coords),!),!.
+
+getCoords([H|T], [H|T]).
+
+%return a list with all possible moves for player
+check_member(List, Plyr, Result) :-
+   get_opponent(Plyr, Opp),
+   flat(List,Plyr,One),
+   check_north(List,One,Plyr, Opp,Up),
+   check_south(List,One,Plyr,Opp,Down),
+   check_east(List,One,Plyr,Opp,Right),
+   check_west(List,One,Plyr,Opp,Left),
+   
+   check_upright(List,One,Plyr,Opp,Upright),
+   check_downright(List,One,Plyr,Opp,Downright),
+   check_upleft(List,One,Plyr,Opp,Upleft),
+   check_downleft(List,One,Plyr,Opp,Downleft),
+   
+   append_list(Up, Down, Up_Down),
+   append_list(Right, Left, Right_Left),
+   append_list(Upright, Downright, Upright_Downright),
+   append_list(Upleft, Downleft, Upleft_Downleft),
+   
+   append_list(Up_Down, Right_Left, NewList),
+   append_list(Upright_Downright, Upleft_Downleft, NewList2),
+   
+   append_list(NewList, NewList2, NewList3),
+   sort(NewList3, Result),!.
+   
+
+%this will get the first valid move for H in north direction, controls that the first element is Player and the second is Opponent, then start "walking to find valid moves"
+check_north(_, [], _, _, []).
+check_north(List,[H|T],Plyr,Plyr2, [Res | Res2]) :-
+   (get(List, H, One),
+   One = Plyr,
+   add_up(H, NewH),
+   get(List, NewH, Two),
+   Two = Plyr2,
+   add_up(NewH, NewH2),
+   test_count_equal(List, Plyr,Plyr2, up, NewH2, Res),
+   check_north(List,T, Plyr, Plyr2, Res2)), !.
+
+check_north(List,[_|T],Plyr,Plyr2, Res2) :-
+   check_north(List,T, Plyr, Plyr2, Res2), !.
+
+%this will get the first valid move for H in south direction
+check_south(_, [], _, _, []).
+check_south(List,[H|T],Plyr,Plyr2, [Res | Res2]) :-
+   (get(List, H, One),
+   One = Plyr,
+   add_down(H, NewH),
+   get(List, NewH, Two),
+   Two = Plyr2,
+   add_down(NewH, NewH2),
+   test_count_equal(List, Plyr,Plyr2, down, NewH2, Res),
+   check_south(List,T, Plyr, Plyr2, Res2)), !. %this is the newst add to south
+
+check_south(List,[_|T],Plyr,Plyr2, Res2) :-
+   check_south(List,T, Plyr,Plyr2, Res2), !.
+
+%this will get the first valid move for H in east direction
+check_east(_, [], _, _, []).
+check_east(List,[H|T],Plyr,Plyr2, [Res | Res2]) :-
+   (get(List, H, One),
+   One = Plyr,
+   add_right(H, NewH),
+   get(List, NewH, Two),
+   Two = Plyr2,
+   add_right(NewH, NewH2),
+   test_count_equal(List, Plyr,Plyr2, right, NewH2, Res),
+   check_east(List,T, Plyr,Plyr2, Res2)), !.
+
+check_east(List,[_|T],Plyr,Plyr2, Res2) :-
+   check_east(List,T, Plyr,Plyr2, Res2), !.
+   %member(NewH2, Dot, Res).
+
+%this will get the first valid move for H in west direction
+check_west(_, [], _, _, []).
+check_west(List,[H|T],Plyr,Plyr2, [Res | Res2]) :-
+   (get(List, H, One),
+   One = Plyr,
+   add_left(H, NewH),
+   get(List, NewH, Two),
+   Two = Plyr2,
+   add_left(NewH, NewH2),
+   test_count_equal(List, Plyr,Plyr2, left, NewH2, Res),
+   check_west(List,T, Plyr,Plyr2, Res2)), !.
+
+check_west(List,[_|T],Plyr,Plyr2, Res2) :-
+   check_west(List,T, Plyr,Plyr2, Res2), !.
+   %member(NewH2, Dot, Res).
+
+%this will get the first valid move for H in west direction
+check_upright(_, [], _, _, []).
+check_upright(List,[H|T],Plyr,Plyr2, [Res | Res2]) :-
+   (get(List, H, One),
+   One = Plyr,
+   add_upright(H, NewH),
+   get(List, NewH, Two),
+   Two = Plyr2,
+   add_upright(NewH, NewH2),
+   test_count_equal(List, Plyr,Plyr2, upright, NewH2, Res),
+   check_upright(List,T, Plyr,Plyr2, Res2)), !.
+
+check_upright(List,[_|T],Plyr,Plyr2, Res2) :-
+   check_upright(List,T, Plyr,Plyr2, Res2), !.
+   %member(NewH2, Dot, Res).
+
+%this will get the first valid move for H in west direction
+check_downright(_, [], _, _, []).
+check_downright(List,[H|T],Plyr,Plyr2, [Res | Res2]) :-
+   (get(List, H, One),
+   One = Plyr,
+   add_downright(H, NewH),
+   get(List, NewH, Two),
+   Two = Plyr2,
+   add_downright(NewH, NewH2),
+   test_count_equal(List, Plyr,Plyr2, downright, NewH2, Res),
+   check_downright(List,T, Plyr,Plyr2, Res2)), !.
+
+check_downright(List,[_|T],Plyr,Plyr2, Res2) :-
+   check_downright(List,T, Plyr,Plyr2, Res2), !.
+   %member(NewH2, Dot, Res).
+
+%this will get the first valid move for H in west direction
+check_downleft(_, [], _, _, []).
+check_downleft(List,[H|T],Plyr,Plyr2, [Res | Res2]) :-
+   (get(List, H, One),
+   One = Plyr,
+   add_downleft(H, NewH),
+   get(List, NewH, Two),
+   Two = Plyr2,
+   add_downleft(NewH, NewH2),
+   test_count_equal(List, Plyr,Plyr2, downleft, NewH2, Res),
+   check_downleft(List,T, Plyr,Plyr2, Res2)), !.
+
+check_downleft(List,[_|T],Plyr,Plyr2, Res2) :-
+   check_downleft(List,T, Plyr,Plyr2, Res2), !.
+   %member(NewH2, Dot, Res).
+
+%this will get the first valid move for H in west direction
+check_upleft(_, [], _, _, []).
+check_upleft(List,[H|T],Plyr,Plyr2, [Res | Res2]) :-
+   (get(List, H, One),
+   One = Plyr,
+   add_upleft(H, NewH),
+   get(List, NewH, Two),
+   Two = Plyr2,
+   add_upleft(NewH, NewH2),
+   test_count_equal(List, Plyr,Plyr2, upleft, NewH2, Res),
+   check_upleft(List,T, Plyr,Plyr2, Res2)), !.
+
+check_upleft(List,[_|T],Plyr,Plyr2, Res2) :-
+   check_upleft(List,T, Plyr,Plyr2, Res2), !.
+   %member(NewH2, Dot, Res).
+
+
+
+add_downleft([X], [NewX]) :-
+   NewX is X+1, !.
+add_downleft([H|T], [H1|Res]) :- H1 is H-1,add_downleft(T, Res), !.
+
+add_upleft([X], [NewX]) :-
+   NewX is X-1, !.
+add_upleft([H|T], [H1|Res]) :- H1 is H-1,add_upleft(T, Res), !.
+
+add_downright([X], [NewX]) :-
+   NewX is X+1, !.
+add_downright([H|T], [H1|Res]) :- H1 is H+1,add_downright(T, Res), !.
+
+add_upright([X], [NewX]) :-
+   NewX is X-1, !.
+add_upright([H|T], [H1|Res]) :- H1 is H+1,add_upright(T, Res), !.
+
+
+add_up([X], [NewX]) :-
+   NewX is X-1, !.
+add_up([H|T], [H|Res]) :- add_up(T, Res), !.
+
+add_down([X], [NewX]) :-
+   NewX is X+1, !.
+add_down([H|T], [H|Res]) :- add_down(T, Res), !.
+
+
+add_right([X|Y], [NewX|Y]) :- NewX is X+1.
+
+add_left([X|Y], [NewX|Y]) :- NewX is X-1.
+
+return_empty(_, []).
+
+
+%THIS IS FOR NEXTSTATE-----------------------------------------------------------------
+
+%test_newmove(List, Plyr, Direction, H, List)
+%check that the start point is a dot, returns a list of all opponents stones that should be turned
+test_north(Plyr,Opp, Move, State, North) :-
+%	(get(State, Move, Value),
+%	Value = .),
+	add_up(Move, NewH),
+	get(State, NewH, Value2),
+	Value2 = Opp,
+	newmoveUp(State,Move, Plyr,Opp, up, Move, North), !.
+
+test_north(_, _, _,_, []) :- !. 
+	
+%test_newmove(List, Plyr, Direction, H, List)
+%check that the start point is a dot, returns a list of all opponents stones that should be turned
+test_south(Plyr,Opp, Move, State, South) :-
+%	(get(State, Move, Value),
+%	Value = .),
+	add_down(Move, NewH),
+	get(State, NewH, Value2),
+	Value2 = Opp,
+	newmoveDown(State,Move, Plyr,Opp, down, Move, South), !.
+
+test_south(_, _, _, _, []) :- !. 
+%test_newmove(List, Plyr, Direction, H, List)
+%check that the start point is a dot, returns a list of all opponents stones that should be turned
+test_east(Plyr,Opp, Move, State, East) :-
+%	(get(State, Move, Value),
+%	Value = .),
+	add_right(Move, NewH),
+	get(State, NewH, Value2),
+	Value2 = Opp,
+	newmoveRight(State,Move, Plyr,Opp, right, Move, East), !.
+test_east(_, _, _,_, []) :- !. 	
+%test_newmove(List, Plyr, Direction, H, List)
+%check that the start point is a dot, returns a list of all opponents stones that should be turned
+test_west(Plyr,Opp, Move, State, West) :-
+%	(get(State, Move, Value),
+%	Value = .),
+	add_left(Move, NewH),
+	get(State, NewH, Value2),
+	Value2 = Opp,
+	newmoveLeft(State,Move, Plyr,Opp, left, Move, West), !.
+	test_west(_, _,_, _, []) :- !. 
+%test_newmove(List, Plyr, Direction, H, List)
+%check that the start point is a dot, returns a list of all opponents stones that should be turned
+test_upleft(Plyr,Opp, Move, State, Upleft) :-
+%	(get(State, Move, Value),
+%	Value = .),
+	add_upleft(Move, NewH),
+	get(State, NewH, Value2),
+	Value2 = Opp,
+	newmoveUpleft(State,Move, Plyr,Opp, upleft, Move, Upleft), !.
+test_upleft(_, _,_, _, []) :- !. 
+%test_newmove(List, Plyr, Direction, H, List)
+%check that the start point is a dot, returns a list of all opponents stones that should be turned
+test_downleft(Plyr,Opp, Move, State, Downleft) :-
+%	(get(State, Move, Value),
+%	Value = .),
+	add_downleft(Move, NewH),
+	get(State, NewH, Value2),
+	Value2 = Opp,
+	newmoveDownleft(State,Move, Plyr,Opp, downleft, Move, Downleft), !.
+test_downleft(_, _,_, _, []) :- !. 	
+%test_newmove(List, Plyr, Direction, H, List)
+%check that the start point is a dot, returns a list of all opponents stones that should be turned
+test_upright(Plyr,Opp, Move, State, Upright) :-
+%	(get(State, Move, Value),
+%	Value = .),
+	add_upright(Move, NewH),
+	get(State, NewH, Value2),
+	get_opponent(Plyr, Opp),
+	Value2 = Opp,
+	newmoveUpright(State,Move, Plyr,Opp, upright, Move, Upright), !.
+test_upright(_, _,_, _, []) :- !. 	
+%test_newmove(List, Plyr, Direction, H, List)
+%check that the start point is a dot, returns a list of all opponents stones that should be turned
+test_downright(Plyr,Opp, Move, State, Downright) :-
+%	(get(State, Move, Value),
+%	Value = .),
+	add_downright(Move, NewH),
+	get(State, NewH, Value2),
+	Value2 = Opp,
+	newmoveDownright(State,Move, Plyr,Opp, downright, Move, Downright), !.
+test_downright(_, _,_, _, []) :- !. 
+
+newmoveUp(List,_, Plyr,_, _, H, []) :-
+	add_up(H, NewH),
+	get(List,NewH,Dot),
+	Dot = Plyr.
+newmoveUp(List,StartH, Plyr,Opp, Direction, H, [NewH| Coords]) :-
+   (Direction = up,
+   add_up(H, NewH),
+   (get(List,NewH,Dot),   
+   get_opponent(Plyr, Opp),
+   Dot = Opp,
+   newmoveUp(List,StartH, Plyr,Opp, up, NewH, Coords))),!.
+
+
+newmoveDown(List,_, Plyr,_, _, H, []) :-
+	add_down(H, NewH),
+	get(List,NewH,Dot),
+	Dot = Plyr.
+newmoveDown(List,StartH, Plyr,Opp, Direction, H, [NewH| Coords]) :-
+   (Direction = down,
+   add_down(H, NewH),
+   (get(List,NewH,Dot),   
+   get_opponent(Plyr, Opp),
+   Dot = Opp,
+   newmoveDown(List,StartH, Plyr,Opp, down, NewH, Coords))),!.
+
+newmoveRight(List,_, Plyr,_, _, H, []) :-
+	add_right(H, NewH),
+	get(List,NewH,Dot),
+	Dot = Plyr.
+newmoveRight(List,StartH, Plyr,Opp, Direction, H, [NewH| Coords]) :-
+   (Direction = right,
+   add_right(H, NewH),
+   (get(List,NewH,Dot),   
+   get_opponent(Plyr, Opp),
+   Dot = Opp,
+   newmoveRight(List,StartH, Plyr,Opp, right, NewH, Coords))),!.
+   
+newmoveLeft(List,_, Plyr,_, _, H, []) :-
+	add_left(H, NewH),
+	get(List,NewH,Dot),
+	Dot = Plyr.
+newmoveLeft(List,StartH, Plyr,Opp, Direction, H, [NewH| Coords]) :-
+   (Direction = left,
+   add_left(H, NewH),
+   (get(List,NewH,Dot),   
+   get_opponent(Plyr, Opp),
+   Dot = Opp,
+   newmoveLeft(List,StartH, Plyr,Opp, left, NewH, Coords))),!.
+   
+newmoveUpleft(List,_, Plyr,_, _, H, []) :-
+	add_upleft(H, NewH),
+	get(List,NewH,Dot),
+	Dot = Plyr.
+newmoveUpleft(List,StartH, Plyr,Opp ,Direction, H, [NewH| Coords]) :-
+   (Direction = upleft,
+   add_upleft(H, NewH),
+   (get(List,NewH,Dot),   
+   get_opponent(Plyr, Opp),
+   Dot = Opp,
+   newmoveUpleft(List,StartH, Plyr,Opp, upleft, NewH, Coords))),!.
+
+   
+newmoveDownleft(List,_, Plyr,_, _, H, []) :-
+	add_downleft(H, NewH),
+	get(List,NewH,Dot),
+	Dot = Plyr.
+newmoveDownleft(List,StartH, Plyr,Opp, Direction, H, [NewH| Coords]) :-
+   (Direction = downleft,
+   add_downleft(H, NewH),
+   (get(List,NewH,Dot),   
+   get_opponent(Plyr, Opp),
+   Dot = Opp,
+   newmoveDownleft(List,StartH, Plyr,Opp, downleft, NewH, Coords))),!.
+   
+newmoveUpright(List,_, Plyr,_, _, H, []) :-
+	add_upright(H, NewH),
+	get(List,NewH,Dot),
+	Dot = Plyr.
+newmoveUpright(List,StartH, Plyr,Opp, Direction, H, [NewH| Coords]) :-
+   (Direction = upright,
+   add_upright(H, NewH),
+   (get(List,NewH,Dot),   
+
+   Dot = Opp,
+   newmoveUpright(List,StartH, Plyr,Opp, upright, NewH, Coords))),!.
+   
+newmoveDownright(List,_, Plyr,_, _, H, []) :-
+	add_downright(H, NewH),
+	get(List,NewH,Dot),
+	Dot = Plyr.
+newmoveDownright(List,StartH, Plyr,  Opp,Direction, H, [NewH| Coords]) :-
+   (Direction = downright,
+   add_downright(H, NewH),
+   (get(List,NewH,Dot),   
+   Dot = Opp,
+   newmoveDownright(List,StartH, Plyr, Opp, downleft, NewH, Coords))),!.
+
+setStones(State, Plyr, Move, NewState) :-
+   get_opponent(Plyr, Opp),
+   test_north(Plyr,Opp, Move, State, List1),
+   test_south(Plyr,Opp, Move, State, List2),
+   
+   test_east(Plyr,Opp, Move, State, List3),
+   test_west(Plyr,Opp, Move, State, List4),
+   
+   test_upleft(Plyr,Opp, Move, State, List5),
+   test_downleft(Plyr,Opp, Move, State, List6),
+   
+   test_upright(Plyr,Opp, Move, State, List7),
+   test_downright(Plyr,Opp, Move, State, List8),
+   
+   append(List1, List2, List12),
+   append(List3, List4, List34),
+   
+   append(List5, List6, List56),
+   append(List7, List8, List78),
+   
+   append(List12, List34, List12_34),
+   append(List56, List78, List56_78),
+   
+   append(List12_34, List56_78, List),
+   
+   setNewState(State, List, Plyr, NewState2),
+   set(NewState2, NewState, Move, Plyr), !.
+   
+listCoordsForNewMove(State, Plyr, Move, List) :-
+   get_opponent(Plyr, Opp),
+   test_north(Plyr,Opp, Move, State, List1),
+   test_south(Plyr,Opp, Move, State, List2),
+   
+   test_east(Plyr,Opp, Move, State, List3),
+   test_west(Plyr,Opp, Move, State, List4),
+   
+   test_upleft(Plyr,Opp, Move, State, List5),
+   test_downleft(Plyr,Opp, Move, State, List6),
+   
+   test_upright(Plyr,Opp, Move, State, List7),
+   test_downright(Plyr,Opp, Move, State, List8),
+   
+   append(List1, List2, List12),
+   append(List3, List4, List34),
+   
+   append(List5, List6, List56),
+   append(List7, List8, List78),
+   
+   append(List12, List34, List12_34),
+   append(List56, List78, List56_78),
+   
+   append(List12_34, List56_78, List).
+	
+setNewState(State, [], _, State).
+setNewState(State, [H|T], Plyr, FinalState) :-
+	set(State, NewState, H, Plyr),
+	setNewState(NewState, T, Plyr, FinalState).
+singletons([]) -->        % the empty list
+   [].                    % is empty
+singletons([H,S|T]) -->     % the head of a nonempty list
+   [[H,S]],                 % is a list on its own
+   singletons(T). 
+   
+%Counts how many of "Plyr" inside one list
+count([], _, 0).
+count([X|T], Plyr, N) :- count(T, Plyr, N1), N is N1 + 1, Plyr = X.
+count([X|T], Plyr, N) :- X \= Plyr, count(T, Plyr, N).
+
+% Since the board is a list in a list, this function sends list one by
+% one to count which gets the result for every list
+sum_up_score([H|_], Plyr, Score) :-
+	count(H, Plyr, Score).
+sum_up_score([_|T], Plyr, Score) :-
+	sum_up_score(T, Plyr, Score).
+
+%put all the results from sum_up_score into a list
+%list_sum will give the sum of that list which is the Plyr score
+get_score(State, Plyr, Score) :-
+	findall(X0, sum_up_score(State, Plyr, X0), List),
+	list_sum(List, Score).
+
+list_sum([],0).
+
+list_sum([Head|Tail], TotalSum):-
+list_sum(Tail, Sum1),
+TotalSum is Head+Sum1.
+	%sum_up_score(State, Plyr, Score).
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%tie(...)%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% define tie(State) here.
+%    - true if terminal State is a "tie" (no winner)
+tie(State) :-
+	terminal(State),
+	get_score(State, 1, Score1),
+	get_score(State, 2, Score2),
+	Score1 = Score2.
+	%score for player one and player two is the same
+
+
+
+
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%terminal(...)%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% define terminal(State).
+%   - true if State is a terminal
+% check if board has empty spaces or someone has nomore possible moves.
+terminal(State) :-
+   (get_score(State, ., Res),
+   Res = 0, !);
+   (moves(1, State, MvList), MvList = [], !),!;
+   (moves(2, State, MvList), MvList = [], !),!.
+
+
+
+
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%showState(State)%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% given helper. DO NOT  change this. It's used by play.pl
+%%
+
+showState( G ) :-
+	printRows( G ).
+
+printRows( [] ).
+printRows( [H|L] ) :-
+	printList(H),
+	nl,
+	printRows(L).
+
+printList([]).
+printList([H | L]) :-
+	write(H),
+	write(' '),
+	printList(L).
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%moves(Plyr,State,MvList)%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% define moves(Plyr,State,MvList).
+%   - returns list MvList of all legal moves Plyr can make in State
+moves(Plyr, State, MvList) :-
+    check_member(State, Plyr, ListUnsorted),
+   (ListUnsorted = [] ->
+		MvList = [n]
+	;
+		insort(ListUnsorted, MvList)).
+
+	%showState(State).
+
+nextPlyr(NewState, Plyr, NextPlyr) :-
+	get_opponent(Plyr, Opp),
+	(moves(Opp, NewState, []) ->
+		NextPlyr = Plyr
+	;
+		NextPlyr = Opp).
+
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%nextState(Plyr,Move,State,NewState,NextPlyr)%%%%%%%%%%%%%%%%%%%%
+%%
+%% define nextState(Plyr,Move,State,NewState,NextPlyr).
+%   - given that Plyr makes Move in State, it determines NewState (i.e. the next
+%     state) and NextPlayer (i.e. the next player who will move).
+nextState(Plyr, n, State, State, NextPlyr) :- nextPlyr(State, Plyr, NextPlyr).
+nextState(Plyr, Move, State, NewState, NextPlyr) :-
+	get_opponent(Plyr, NextPlyr),
+	validmove(Plyr, State, Move),
+	setStones(State, Plyr, Move, NewState2),
+	listCoordsForNewMove(State, Plyr, Move, List),
+	nextStateHelper(Plyr, List, NewState2, NewState).
+
+
+nextStateHelper(_, [], State, State).
+nextStateHelper(Plyr, [H|T], State, NewState2) :-
+	setStones(State, Plyr, H, NewState),
+	nextStateHelper(Plyr,T, NewState, NewState2).
+
+%nextStateHelper(Plyr, [_|T], State, NewState) :-
+%	nextStateHelper(State, Plyr, T, NewState).
+	
+
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%validmove(Plyr,State,Proposed)%%%%%%%%%%%%%%%%%%%%
+%%
+%% define validmove(Plyr,State,Proposed).
+%   - true if Proposed move by Plyr is valid at State.
+%calling move to get the list of possible moves, then check if proposed move is in the possible move list.
+validmove(Plyr, State, Proposed) :-
+    moves(Plyr, State, MvList),
+    member(Proposed, MvList), !.
+
+
+
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%h(State,Val)%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% define h(State,Val).
+%   - given State, returns heuristic Val of that state
+%   - larger values are good for Max, smaller values are good for Min
+%   NOTE1. If State is terminal h should return its true value.
+%   NOTE2. If State is not terminal h should be an estimate of
+%          the value of state (see handout on ideas about
+%          good heuristics.
+
+h(State, 200) :- winner(State, 1), !.
+h(State, -200) :- winner(State, 2), !.
+h(State, 0) :- tie(State), !.
+h(_State, 0).
+
+
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%lowerBound(B)%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% define lowerBound(B).
+%   - returns a value B that is less than the actual or heuristic value
+%     of all states.
+
+lowerBound(-201).
+
+
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%upperBound(B)%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% define upperBound(B).
+%   - returns a value B that is greater than the actual or heuristic value
+%     of all states.
+
+
+upperBound(201).
+
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                                                       %
+%                                                                       %
+%                Given   UTILITIES                                      %
+%                   do NOT change these!                                %
+%                                                                       %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% get(Board, Point, Element)
+%    : get the contents of the board at position column X and row Y
+% set(Board, NewBoard, [X, Y], Value):
+%    : set Value at column X row Y in Board and bind resulting grid to NewBoard
+%
+% The origin of the board is in the upper left corner with an index of
+% [0,0], the upper right hand corner has index [5,0], the lower left
+% hand corner has index [0,5], the lower right hand corner has index
+% [5,5] (on a 6x6 board).
+%
+% Example
+% ?- initBoard(B), showState(B), get(B, [2,3], Value).
+%. . . . . .
+%. . . . . .
+%. . 1 2 . .
+%. . 2 1 . .
+%. . . . . .
+%. . . . . .
+%
+%B = [['.', '.', '.', '.', '.', '.'], ['.', '.', '.', '.', '.', '.'],
+%     ['.', '.', 1, 2, '.', '.'], ['.', '.', 2, 1, '.'|...],
+%     ['.', '.', '.', '.'|...], ['.', '.', '.'|...]]
+%Value = 2
+%Yes
+%?-
+%
+% Setting values on the board
+% ?- initBoard(B),  showState(B),set(B, NB1, [2,4], 1),
+%         set(NB1, NB2, [2,3], 1),  showState(NB2).
+%
+% . . . . . .
+% . . . . . .
+% . . 1 2 . .
+% . . 2 1 . .
+% . . . . . .
+% . . . . . .
+%
+% . . . . . .
+% . . . . . .
+% . . 1 2 . .
+% . . 1 1 . .
+% . . 1 . . .
+% . . . . . .
+%
+%B = [['.', '.', '.', '.', '.', '.'], ['.', '.', '.', '.', '.', '.'], ['.', '.',
+%1, 2, '.', '.'], ['.', '.', 2, 1, '.'|...], ['.', '.', '.', '.'|...], ['.', '.',
+% '.'|...]]
+%NB1 = [['.', '.', '.', '.', '.', '.'], ['.', '.', '.', '.', '.', '.'], ['.', '.'
+%, 1, 2, '.', '.'], ['.', '.', 2, 1, '.'|...], ['.', '.', 1, '.'|...], ['.', '.
+%', '.'|...]]
+%NB2 = [['.', '.', '.', '.', '.', '.'], ['.', '.', '.', '.', '.', '.'], ['.', '.'
+%, 1, 2, '.', '.'], ['.', '.', 1, 1, '.'|...], ['.', '.', 1, '.'|...], ['.',
+%'.', '.'|...]]
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+% get(Board, Point, Element): get the value of the board at position
+% column X and row Y (indexing starts at 0).
+% Do not change get:
+
+get( Board, [X, Y], Value) :-
+	nth0( Y, Board, ListY),
+	nth0( X, ListY, Value).
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+% set( Board, NewBoard, [X, Y], Value): set the value of the board at position
+% column X and row Y to Value (indexing starts at 0). Returns the new board as
+% NewBoard. Do not change set:
+
+set( [Row|RestRows], [NewRow|RestRows], [X, 0], Value) :-
+    setInList(Row, NewRow, X, Value).
+
+set( [Row|RestRows], [Row|NewRestRows], [X, Y], Value) :-
+    Y > 0,
+    Y1 is Y-1,
+    set( RestRows, NewRestRows, [X, Y1], Value).
+
+% DO NOT CHANGE THIS BLOCK OF COMMENTS.
+%
+% setInList( List, NewList, Index, Value): given helper to set. Do not
+% change setInList:
+
+setInList( [_|RestList], [Value|RestList], 0, Value).
+
+setInList( [Element|RestList], [Element|NewRestList], Index, Value) :-
+	Index > 0,
+	Index1 is Index-1,
+	setInList( RestList, NewRestList, Index1, Value).
